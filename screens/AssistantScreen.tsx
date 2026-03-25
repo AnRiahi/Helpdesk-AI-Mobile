@@ -1,15 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 export default function AIAssistantScreen() {
+  const router = useRouter();
+  const { email } = useLocalSearchParams(); // Récupère l'email de l'utilisateur connecté
+  
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiResult, setAiResult] = useState<any>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // ✅ CONFIGURATION IP S7I7A (172.24.64.161)
+  const API_BASE_URL = 'http://192.168.1.5:5127/api';
 
   const getPriorityData = (priority: string) => {
     switch (priority) {
@@ -37,12 +44,11 @@ export default function AIAssistantScreen() {
     if (!message) return;
     setLoading(true);
     try {
-      // API de l'analyse IA (Gemini)
-      const res = await axios.post('http://172.24.64.161:5127/api/ai/analyze', { message });
+      const res = await axios.post(`${API_BASE_URL}/ai/analyze`, { message });
       setAiResult(res.data);
       setIsConfirming(true);
     } catch (error) {
-      Alert.alert("Erreur", "Backend injoignable. Vérifiez votre serveur et l'IP.");
+      Alert.alert("Erreur", "Backend injoignable. Vérifiez votre serveur.");
     } finally {
       setLoading(false);
     }
@@ -52,6 +58,7 @@ export default function AIAssistantScreen() {
     setLoading(true);
     try {
       const ticketData = {
+        userEmail: email, //L'email est envoyé pour le Dashboard
         description: message,
         service: aiResult.service,
         priority: aiResult.priority || "Medium",
@@ -59,12 +66,22 @@ export default function AIAssistantScreen() {
         status: "Open",
         summary: aiResult.summary || message.substring(0, 50), 
         startDate: aiResult.extractedData?.dates?.startDate,
-        endDate: aiResult.extractedData?.dates?.endDate
+        endDate: aiResult.extractedData?.dates?.endDate,
+        attachmentPath: selectedImage 
       };
 
-      await axios.post('http://172.24.64.161:5127/api/tickets', ticketData);
-      Alert.alert("Succès", "Ticket enregistré avec succès !");
-      resetApp();
+      await axios.post(`${API_BASE_URL}/tickets`, ticketData);
+      
+      Alert.alert("Succès", "Ticket enregistré avec succès !", [
+        { text: "OK", onPress: () => {
+            resetApp();
+            // Retour au dashboard avec le paramètre email pour rafraîchir
+            router.replace({
+              pathname: '/(tabs)/dashboard',
+              params: { email: email }
+            });
+        }}
+      ]);
     } catch (error) {
       Alert.alert("Erreur", "Impossible de sauvegarder le ticket.");
     } finally {
@@ -82,7 +99,7 @@ export default function AIAssistantScreen() {
   if (isConfirming && aiResult) {
     const isRH = aiResult.service?.toUpperCase() === 'HR' || aiResult.service?.toUpperCase() === 'RH';
     const isMaladie = aiResult.requestType?.toLowerCase().includes('maladie') || 
-                     aiResult.requestType?.toLowerCase().includes('sick');
+                      aiResult.requestType?.toLowerCase().includes('sick');
     const pData = !isRH ? getPriorityData(aiResult.priority) : null;
 
     return (
@@ -96,7 +113,7 @@ export default function AIAssistantScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.infoText}>Détails de votre demande {isRH ? 'RH' : 'IT'} analysés par l'IA.</Text>
+          <Text style={styles.infoText}>Utilisateur : <Text style={{fontWeight:'bold'}}>{email}</Text></Text>
           
           <View style={styles.confirmCard}>
             <View style={styles.sectionHeader}>
@@ -107,7 +124,6 @@ export default function AIAssistantScreen() {
               <Text style={styles.descriptionText}>"{message}"</Text>
             </View>
 
-            {/* --- TYPE DE REQUÊTE (AJOUTÉ) --- */}
             <View style={styles.row}>
               <View style={[styles.iconBox, { backgroundColor: '#fff0f0' }]}>
                 <Ionicons name="list-outline" size={20} color="#ff4d4d" />
@@ -180,7 +196,7 @@ export default function AIAssistantScreen() {
           </View>
 
           <TouchableOpacity style={styles.sendButton} onPress={handleConfirm} disabled={loading}>
-            {loading ? <ActivityIndicator color="white" /> : <Text style={styles.sendButtonText}>Confirmer l'envoi  ➤</Text>}
+            {loading ? <ActivityIndicator color="white" /> : <Text style={styles.sendButtonText}>Confirmer l'envoi  ➤</Text>}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.modifyButton} onPress={() => setIsConfirming(false)}>
@@ -211,7 +227,7 @@ export default function AIAssistantScreen() {
         </View>
 
         <TouchableOpacity style={styles.sendButton} onPress={handleAnalyze} disabled={loading}>
-          {loading ? <ActivityIndicator color="white" /> : <Text style={styles.sendButtonText}>Send Request</Text>}
+          {loading ? <ActivityIndicator color="white" /> : <Text style={styles.sendButtonText}>Analyser ma demande</Text>}
         </TouchableOpacity>
       </ScrollView>
     </View>
